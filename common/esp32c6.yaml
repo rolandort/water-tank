@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------------
+# Device Configuration for ESPHome
+# Board: Seeed XIAO ESP32-C6 4MB ("ESP32-C6FH4")
+# ---------------------------------------------------------------------
+
+esp32:
+  # PlatformIO board ID from https://registry.platformio.org/platforms/platformio/espressif32/boards
+  board: esp32-c6-devkitc-1 # esp32-c6-devkitc-1 / esp32-c6-devkitm-1
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+    # PlatformIO Espressif32 https://github.com/platformio/platform-espressif32/releases/
+    platform_version: 6.9.0 
+    # Tasmota ESP-IDD https://github.com/tasmota/esp-idf/releases
+    source: https://github.com/tasmota/esp-idf/releases/download/v5.3.1.241024/esp-idf-v5.3.1.zip 
+    version: 5.3.1
+    sdkconfig_options:
+      CONFIG_ESPTOOLPY_FLASHSIZE_4MB: y
+
+external_components:
+  # ADC sensor component (https://github.com/lboue/esphome/blob/adc_oneshot/esphome/components/adc)
+  - source:
+      url: https://github.com/lboue/esphome
+      type: git
+      ref: adc_oneshot
+    components: [ adc ]
+    #refresh: 0s

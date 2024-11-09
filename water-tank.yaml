@@ -1,0 +1,339 @@
+# ---------------------------------------------------------------------
+# Water Tank Level Sensor
+# Hardware: Seeed XIAO ESP32-C6 8MB
+# Sensors: JSN-RS04t
+# Autor: Roland Ortner
+# Date: 2024-09-07
+# Reports: battery voltage, WiFi signal, level and volume in water tank
+# Icons: https://pictogrammers.com/library/mdi/
+# ---------------------------------------------------------------------
+
+# Substitution of global strings
+substitutions:
+  # Device properties
+  devicename: "water-tank"
+  friendly_name: "Water Tank"
+  short_name: "Water Tank" # used for fallback hotspot
+  comment: "Water tank monitoring with Seeed XIAO ESP32-C6"
+  area: Garden
+  icon: mdi:water-well
+
+  project_name:       "ortner.water_tank"
+  project_version:    "2024.11.09.003"
+
+  pin_battery_voltage: GPIO0  # GPIO0 D0
+  pin_wakeup:          GPIO1  # GPIO1 left/bottom (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
+  pin_dht:             GPIO2  # GPIO2 D2
+  pin_ultrasonic_rx:   GPIO18 # GPIO18 Rx/Trig
+  pin_ultrasonic_tx:   GPIO20 # GPIO20 Tx/Echo
+  
+  naptime: 20min  # Deep sleep duration in minutes e.g. '20min'
+
+# Global variables
+globals:
+  # Distance between ultrasonic sensor and bottom of tank in cm
+  - id: sensor_height
+    type: int
+    initial_value: '125'
+  # Total capacity of the water tank in liter
+  - id: capacity
+    type: int
+    initial_value: '1500'
+
+packages:
+  esp32c6: !include common/esp32c6.yaml
+  base: !include common/base.yaml
+  # mqtt: !include common/mqtt.yaml # api: needs to be disabled in base!
+
+esphome:
+  # Boot sequence run only once after WiFi connected
+  on_boot:
+    - priority: -300 # make sure WiFi is connected first
+      then:
+        - script.execute: read_data
+        - script.wait: read_data # ensures sequential processing
+        - script.execute: post_data
+        - if:
+            condition: 
+              binary_sensor.is_off: wakeup
+            then:
+              - logger.log: "Entering deep sleep for ${naptime} min..."
+              # - delay: 10s # small time window to push OTA updates 
+              - deep_sleep.enter:
+                  id: sleep_now
+                  sleep_duration: $naptime
+
+script:
+  # Script to read all sensor values
+  - id: read_data
+    then:
+      - logger.log: "Reading sensor data..." 
+      - component.update: version
+      - component.update: uptime_seconds
+      - component.update: uptime_str
+      - component.update: wifi_strength
+      - component.update: battery_voltage
+      - component.update: distance
+      - delay: 2s # wait for ultrasonic sensor
+      - logger.log: "Reading sensors data done." 
+
+  # Script to post all data to Datacake
+  - id: post_data
+    then:
+      - logger.log: "Post data to Datacake..."
+      - http_request.post:
+          headers:
+            Content-Length: 0
+          url: https://api.datacake.co/integrations/api/68f43bc6-d123-4717-80da-48ea7e11c01c/
+          json: |-
+            root["device"] = "a2245cc6-1fc6-4713-aa5b-c3c319d27195";
+            root["version"] = "${project_version}";
+            root["wifi_strength"] = id(wifi_strength).state;
+            root["battery_voltage"] = id(battery_voltage).state;
+            root["battery_level"] = id(battery_level).state;
+            root["distance"] = id(distance).state;
+            root["level_cm"] = id(level_cm).state;
+            root["level_liter"] = id(level_liter).state;
+            root["level_percent"] = id(level_percent).state;
+            root["temperature"] = id(temperature).state;
+            root["humidity"] = id(humidity).state;
+          on_response:
+            then:
+              - logger.log:
+                  format: 'Posted data to Datacake with status %d in %u ms'
+                  args:
+                    - response->status_code
+                    - response->duration_ms
+
+# UART mode (do not set stop_bits, rx_buffer_size for jsn_sr04t) (https://esphome.io/components/uart.html)
+uart:
+  - id: uart_ultrasonic
+    tx_pin: $pin_ultrasonic_tx # Tx/Echo GPIO20
+    rx_pin: $pin_ultrasonic_rx # Rx/Trig GPIO18
+    baud_rate: 9600
+
+# Global settings for http post requests (https://esphome.io/components/http_request.html)
+http_request:  
+  id: http_post_data
+  verify_ssl: false
+  timeout: 10s
+
+button:
+  # Restart button on the web UI
+  - platform: restart
+    name: "Restart"
+    entity_category: "diagnostic"
+    web_server: 
+      sorting_weight: 11
+
+binary_sensor:
+  # Wake up pin
+  - platform: gpio
+    id: wakeup
+    pin: 
+      number: $pin_wakeup
+      mode:
+        pullup: true
+        pulldown: true
+        input: true
+      allow_other_uses: true
+    on_release:
+      - logger.log: "Entering deep sleep for ${naptime} min..."
+      # - delay: 10s # small time window to push OTA updates
+      - deep_sleep.enter:
+          id: sleep_now
+          sleep_duration: $naptime
+
+text_sensor:
+  # Project version string
+  - platform: template
+    id: version
+    name: "Project Version"
+    icon: "mdi:information-outline"
+    entity_category: "diagnostic"
+    web_server: 
+      sorting_weight: 10
+    lambda: return {"${project_version}"};
+    update_interval: never
+
+  # Uptime in days, hours, min, sec
+  - platform: template
+    id: uptime_str
+    name: "Uptime"
+    icon: "mdi:clock-start"
+    entity_category: "diagnostic"
+    web_server: 
+      sorting_weight: 13
+    lambda: |-
+      if (isnan(id(uptime_seconds).raw_state)) {
+        // Filter invalid uptime values
+        ESP_LOGD("main", "Ignoring invalid uptime.");
+        return esphome::to_string("NA");
+      }
+      int seconds = (id(uptime_seconds).state);
+      int days = seconds / (24 * 3600);
+      seconds = seconds % (24 * 3600);
+      int hours = seconds / 3600;
+      seconds = seconds % 3600;
+      int minutes = seconds /  60;
+      seconds = seconds % 60;
+      std::string output = "";
+      if ( days ) {
+        output += esphome::to_string(days) + " d ";
+      }
+      if (hours) {
+        output += esphome::to_string(hours) + " h ";
+      }
+      if (minutes) {
+        output += esphome::to_string(minutes) + " m ";
+      }
+      if (seconds) {
+        output += esphome::to_string(seconds) +" s";
+      }
+      if(output.empty()) {
+        output = "starting...";
+      }
+      return output;
+    update_interval: never
+
+sensor:
+  # Uptime in seconds (internal only) (https://esphome.io/components/sensor/uptime.html)
+  - platform: uptime
+    id: uptime_seconds
+    name: "Uptime in sec"
+    #internal: true
+    entity_category: "diagnostic"
+    web_server: 
+      sorting_weight: 12
+    filters: 
+      - filter_out: nan ## avoid false values of 
+    update_interval: never
+
+  # WiFi signal strength (RSSI) in dBm (https://esphome.io/components/sensor/wifi_signal.html)
+  - platform: wifi_signal 
+    id: wifi_strength
+    name: "WiFi Signal Strength"
+    icon: mdi:wifi-strength-3 
+    unit_of_measurement: 'dBm'
+    accuracy_decimals: 0
+    entity_category: "diagnostic"
+    web_server: 
+      sorting_weight: 14
+    update_interval: never
+
+  # Battery voltage of LiPo battery (3.7V) with two 220 k resistors on A0 (https://esphome.io/components/sensor/adc.html)
+  - platform: adc
+    id: battery_voltage
+    name: "Battery Voltage"
+    icon: mdi:meter-electric-outline 
+    entity_category: "diagnostic"
+    web_server:
+      sorting_weight: 15
+    pin: $pin_battery_voltage # GPIO0 D0 A0 with voltage devider using 220k resistors to GND & VCC
+    accuracy_decimals: 2
+    filters:
+      - multiply: 2.00
+    #update_interval: 120s
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: battery_level
+            state: !lambda 'return round((id(battery_voltage).state / 3.70) * 100.00);' 
+    update_interval: never 
+
+  # Battery level in percent of LiPo battery (3.7V) 
+  - platform: template 
+    id: battery_level
+    name: "Battery Level"
+    icon: mdi:battery-high
+    entity_category: "diagnostic"
+    web_server:
+      sorting_weight: 16
+    unit_of_measurement: '%'
+    accuracy_decimals: 0
+
+  # Internal Temperature of chip (https://esphome.io/components/sensor/internal_temperature.html)
+  - platform: internal_temperature
+    id: temperature_int
+    name: "Internal Temperature"
+    icon: mdi:thermometer
+    unit_of_measurement: '°C'
+
+  # Temperature and Humidity DHT22 (AM2302) (https://esphome.io/components/sensor/dht)
+  - platform: dht
+    model: AM2302
+    pin: $pin_dht ## GPIO02 D2 A2
+    temperature:
+      id: temperature
+      name: "Temperature"
+      icon: "mdi:thermometer-lines"
+      unit_of_measurement: "°C"
+      accuracy_decimals: 1
+    humidity:
+      id: humidity
+      name: "Humidity"
+      icon: "mdi:cloud-percent-outline"
+      unit_of_measurement: "%"
+      accuracy_decimals: 1
+  
+  # Ultrasonic sensor AJ-SR04M distance (https://markus-haack.com/watertank-esphome/)
+  # mounted in 50 mm pipe with feld to remove reflections
+  - platform: jsn_sr04t # "ultrasonic" / "jsn_sr04t"
+    id: distance
+    name: "Distance"
+    #model: "aj_sr04m" # AJ-SR04M does only work with mode jsn_sr04t!
+    # error: [W][jsn_sr04t.sensor:054]: checksum failed: c6 != c5
+    uart_id: uart_ultrasonic
+    unit_of_measurement: "cm"
+    accuracy_decimals: 1
+    filters: 
+      - filter_out: nan
+      - multiply: 100 # convert mm in cm
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: level_cm
+            state: !lambda 'return id(sensor_height) - id(distance).state;'  
+        - sensor.template.publish:
+            id: level_liter
+            state: !lambda 'return round(0.00003452 * pow(id(level_cm).state, 4) - 0.00919289 * pow(id(level_cm).state, 3) + 0.64686665 * pow(id(level_cm).state, 2) + 9.36145409 * id(level_cm).state);'
+        - sensor.template.publish:
+            id: level_percent
+            state: !lambda 'return round((id(level_liter).state / id(capacity)) * 100);'
+    update_interval: never
+                
+  # Fill level height in cm 
+  - platform: template
+    id: level_cm
+    name: "Fill Level"
+    icon: mdi:waves-arrow-up
+    unit_of_measurement: "cm"
+    accuracy_decimals: 1
+
+  # Fill level volume in liter of GRAF Regenwasser-Flachtank Platin 1500 l
+  - platform: template
+    id: level_liter
+    name: "Fill Volume"
+    icon: mdi:water
+    unit_of_measurement: "l"
+    accuracy_decimals: 0
+
+  # Fill level volume in percent
+  - platform: template
+    id: level_percent
+    name: "Fill Volume Ratio"
+    icon: mdi:water-percent
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+  
+# Deep sleep to reduce power usage
+deep_sleep:
+  id: sleep_now  
+  wakeup_pin:
+    number: $pin_wakeup
+    mode:
+      input: true
+      pullup: true
+      pulldown: true
+    allow_other_uses: true
+  wakeup_pin_mode: KEEP_AWAKE
