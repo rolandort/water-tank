@@ -6,3 +6,4 @@
 /common/secrets.yaml
 esphome-dev/
 hivemq/
+/test/
