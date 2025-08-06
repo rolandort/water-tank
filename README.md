@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![ESPHome](https://img.shields.io/badge/Made%20for-ESPHome-000000.svg?style=flat&logo=esphome)](https://esphome.io/)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](https://github.com/username/water-tank)
+[![Version](https://img.shields.io/badge/Version-2025.08.06.001-blue.svg)](https://github.com/username/water-tank)
 
 A smart water level monitoring system for underground rainwater tanks using ESPHome on an ESP32-C6 microcontroller. This project measures water level using an ultrasonic distance sensor, temperature, and humidity, and sends the data to a cloud dashboard.
 
@@ -31,7 +31,7 @@ git clone https://github.com/username/water-tank.git
 cd water-tank
 
 # Configure your settings
-cp /common/secrets-template.yaml /common/secrets.yaml
+cp common/secrets-template.yaml common/secrets.yaml
 # Edit secrets.yaml with your WiFi credentials
 
 # Install dependencies
@@ -64,7 +64,7 @@ This system monitors:
 ### Hardware 
 
 - ESP32 programmable chip: [Seeed XIAO ESP32-C6 8MB](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html) (~$6)
-- Ultrasonic distance sensor: JSN-RS04t or [AJ-SR04M](https://www.amazon.com/dp/B07S1KPYVT) (~$10)
+- Ultrasonic distance sensor: JSN-RS04t or [AJ-SR04M](https://www.amazon.com/dp/B07S1KPYVT) (~$10) (Note: AJ-SR04M only works with JSN-SR04T mode)
 - Temperature & humidity sensor: [AM2302/DHT22](https://www.adafruit.com/product/393) (~$10)
 - Battery: 3.7V LiPo battery with JST connector (optional for portable use)
 - Breadboard and jumper wires for prototyping
@@ -106,6 +106,13 @@ This system monitors:
 
 http://<device_ip>:80
 
+## Webinterface
+
+Access the web interface at:
+```
+http://<device_ip>:80
+```
+
 ## Usage
 
 Once installed, the device will:
@@ -119,7 +126,7 @@ You can adjust the measurement frequency and other parameters in the `water-tank
 # Example configuration changes
 deep_sleep:
   run_duration: 30s
-  sleep_duration: 30min  # Change to adjust measurement frequency
+  sleep_duration: 60min  # Change to adjust measurement frequency
 ```
 
 ## Wiring
@@ -134,8 +141,8 @@ The following pins are used in this project:
   pin_battery_voltage: GPIO0  # GPIO0 D0
   pin_wakeup:          GPIO1  # GPIO1 left/bottom (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
   pin_dht:             GPIO2  # GPIO2 D2
-  pin_ultrasonic_rx:   GPIO18 # GPIO18 Rx/Trig
-  pin_ultrasonic_tx:   GPIO20 # GPIO20 Tx/Echo
+  pin_ultrasonic_tx:   GPIO18 # GPIO18 Tx/Echo
+  pin_ultrasonic_rx:   GPIO20 # GPIO20 Rx/Trig
 ```
 
 ## Project Structure
@@ -144,7 +151,9 @@ The following pins are used in this project:
 water-tank/
 ├── common/
 │   ├── secrets-template.yaml  # Template for WiFi and API credentials
-│   └── secrets.yaml           # Your actual credentials (gitignored)
+│   ├── secrets.yaml           # Your actual credentials (gitignored)
+│   ├── esp32c6.yaml           # ESP32-C6 specific configuration
+│   └── base.yaml              # Base ESPHome configuration
 ├── images/                    # Project images and diagrams
 ├── water-tank.yaml            # Main ESPHome configuration
 ├── README.md                  # This documentation
@@ -168,8 +177,9 @@ The dashboard was realized using [DataCake](https://datacake.co/) which displays
    - Temperature (°C)
    - Humidity (%)
    - Battery Voltage (V)
+   - Battery Level (%)
    - WiFi Signal (dBm)
-4. Update your `secrets.yaml` with the DataCake API endpoint
+4. Update your configuration with the DataCake API endpoint (a sample endpoint is already included in the configuration)
 
 ## Troubleshooting
 
@@ -196,12 +206,15 @@ logger:
 
 ## Power Considerations
 
-- **Battery Life**: With default settings (30-minute intervals), expect approximately 2-3 months of battery life using a 2000mAh LiPo battery.
+- **Battery Life**: With default settings (60-minute intervals), expect approximately 3-4 months of battery life using a 2000mAh LiPo battery.
 - **Solar Option**: For extended operation, consider adding a small solar panel (5V/1W) with a charging circuit.
 - **Power Consumption**:
   - Active mode: ~80mA
   - Deep sleep: ~0.1mA
   - Measurement cycle: ~5 seconds
+- **Battery Voltage Range**:
+  - Full charge: 4.2V
+  - Minimum operating voltage: 3.3V
 
 ## Contributing
 
@@ -226,7 +239,7 @@ Please make sure to update tests and documentation as appropriate.
 ## Contact
 
 - Author: Roland Ortner
-- Date: 2025-03-27
+- Date: 2025-07-25
 - LinkedIn: [https://www.linkedin.com/in/roland-ortner/](https://www.linkedin.com/in/roland-ortner/)
 - Reports: battery voltage, WiFi signal, level and volume in water tank
 - Icons: [https://pictogrammers.com/library/mdi/](https://pictogrammers.com/library/mdi/)
