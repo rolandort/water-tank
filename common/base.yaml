@@ -36,7 +36,7 @@ captive_portal:
 
 # Enable logging (https://esphome.io/components/logger)
 logger:
-  level: DEBUG
+  level: VERBOSE
   hardware_uart: USB_SERIAL_JTAG # Enable logging via USB-C (https://esphome.io/components/logger.html?highlight=usb%2Bcdc#hardware-uarts)
   # baud_rate: 0 # Turn off serial logging (TBD)
 
@@ -44,6 +44,8 @@ logger:
 ota:
   - platform: esphome
     password: !secret ota_password
+
+  - platform: web_server
 
 # Enable Home Assistant API (https://esphome.io/components/api, conflicts with mqtt:)
 api:

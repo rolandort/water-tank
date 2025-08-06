@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------
 # Water Tank Level Sensor
 # Hardware: Seeed XIAO ESP32-C6 8MB
-# Sensors: JSN-RS04t
+# Sensors: JSN-RS04t, DHT22 (AM2302)
 # Autor: Roland Ortner
-# Date: 2024-09-07
+# Date: 2025-07-25
 # Reports: battery voltage, WiFi signal, level and volume in water tank
 # Icons: https://pictogrammers.com/library/mdi/
 # ---------------------------------------------------------------------
@@ -19,15 +19,15 @@ substitutions:
   icon: mdi:water-well
 
   project_name:       "ortner.water_tank"
-  project_version:    "2024.11.09.003"
+  project_version:    "2025.08.06.001"
 
   pin_battery_voltage: GPIO0  # GPIO0 D0
   pin_wakeup:          GPIO1  # GPIO1 left/bottom (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
   pin_dht:             GPIO2  # GPIO2 D2
-  pin_ultrasonic_rx:   GPIO18 # GPIO18 Rx/Trig
-  pin_ultrasonic_tx:   GPIO20 # GPIO20 Tx/Echo
+  pin_ultrasonic_tx:   GPIO18 # GPIO18 Tx/Echo
+  pin_ultrasonic_rx:   GPIO20 # GPIO20 Rx/Trig
   
-  naptime: 20min  # Deep sleep duration in minutes e.g. '20min'
+  naptime: 60min  # Deep sleep duration in minutes e.g. 10s or 20min
 
 # Global variables
 globals:
@@ -39,11 +39,13 @@ globals:
   - id: capacity
     type: int
     initial_value: '1500'
+  # Max battery voltage of full LiPo battery (3.7V)
   - id: battery_max
-    type: int
+    type: float
     initial_value: '4.2'
+  # Min battery voltage of empty LiPo battery (3.7V)
   - id: battery_min
-    type: int
+    type: float
     initial_value: '3.3'
 
 packages:
@@ -57,14 +59,13 @@ esphome:
     - priority: -300 # make sure WiFi is connected first
       then:
         - script.execute: read_data
-        - script.wait: read_data # ensures sequential processing
+        - script.wait: read_data # wait until read_data is finished
         - script.execute: post_data
         - if:
             condition: 
               binary_sensor.is_off: wakeup
             then:
-              - logger.log: "Entering deep sleep for ${naptime} min..."
-              # - delay: 10s # small time window to push OTA updates 
+              - logger.log: "Entering deep sleep for ${naptime}..."
               - deep_sleep.enter:
                   id: sleep_now
                   sleep_duration: $naptime
@@ -79,8 +80,9 @@ script:
       - component.update: uptime_str
       - component.update: wifi_strength
       - component.update: battery_voltage
+      - component.update: environment
       - component.update: distance
-      - delay: 2s # wait for ultrasonic sensor
+      - delay: 5s # wait for ultrasonic sensor
       - logger.log: "Reading sensors data done." 
 
   # Script to post all data to Datacake
@@ -88,7 +90,7 @@ script:
     then:
       - logger.log: "Post data to Datacake..."
       - http_request.post:
-          headers:
+          request_headers:
             Content-Length: 0
           url: https://api.datacake.co/integrations/api/68f43bc6-d123-4717-80da-48ea7e11c01c/
           json: |-
@@ -138,14 +140,14 @@ binary_sensor:
     id: wakeup
     pin: 
       number: $pin_wakeup
+      allow_other_uses: true
       mode:
         pullup: true
         pulldown: true
         input: true
-      allow_other_uses: true
     on_release:
-      - logger.log: "Entering deep sleep for ${naptime} min..."
-      # - delay: 10s # small time window to push OTA updates
+      - logger.log: "Entering deep sleep for ${naptime} ..."
+      - delay: 10s # small time window to push OTA updates
       - deep_sleep.enter:
           id: sleep_now
           sleep_duration: $naptime
@@ -162,44 +164,17 @@ text_sensor:
     lambda: return {"${project_version}"};
     update_interval: never
 
-  # Uptime in days, hours, min, sec
-  - platform: template
+  - platform: uptime
     id: uptime_str
     name: "Uptime"
-    icon: "mdi:clock-start"
     entity_category: "diagnostic"
     web_server: 
-      sorting_weight: 13
-    lambda: |-
-      if (isnan(id(uptime_seconds).raw_state)) {
-        // Filter invalid uptime values
-        ESP_LOGD("main", "Ignoring invalid uptime.");
-        return esphome::to_string("NA");
-      }
-      int seconds = (id(uptime_seconds).state);
-      int days = seconds / (24 * 3600);
-      seconds = seconds % (24 * 3600);
-      int hours = seconds / 3600;
-      seconds = seconds % 3600;
-      int minutes = seconds /  60;
-      seconds = seconds % 60;
-      std::string output = "";
-      if ( days ) {
-        output += esphome::to_string(days) + " d ";
-      }
-      if (hours) {
-        output += esphome::to_string(hours) + " h ";
-      }
-      if (minutes) {
-        output += esphome::to_string(minutes) + " m ";
-      }
-      if (seconds) {
-        output += esphome::to_string(seconds) +" s";
-      }
-      if(output.empty()) {
-        output = "starting...";
-      }
-      return output;
+      sorting_weight: 12
+    format:
+      separator: " " 
+      days: "d"
+      hours: "h"
+      minutes: "m"
     update_interval: never
 
 sensor:
@@ -207,8 +182,8 @@ sensor:
   - platform: uptime
     id: uptime_seconds
     name: "Uptime in sec"
-    #internal: true
     entity_category: "diagnostic"
+    internal: true
     web_server: 
       sorting_weight: 12
     filters: 
@@ -238,8 +213,8 @@ sensor:
     pin: $pin_battery_voltage # GPIO0 D0 A0 with voltage devider using 220k resistors to GND & VCC
     accuracy_decimals: 2
     filters:
-      - multiply: 2.00
-    #update_interval: 120s
+      - multiply: 2.000
+      - offset: 0.10 # fix false measurements of Voltage for max of 4.2
     on_value:
       then:
         - sensor.template.publish:
@@ -268,6 +243,7 @@ sensor:
 
   # Temperature and Humidity DHT22 (AM2302) (https://esphome.io/components/sensor/dht)
   - platform: dht
+    id: environment
     model: AM2302
     pin: $pin_dht ## GPIO02 D2 A2
     temperature:
@@ -285,10 +261,10 @@ sensor:
   
   # Ultrasonic sensor AJ-SR04M distance (https://markus-haack.com/watertank-esphome/)
   # mounted in 50 mm pipe with feld to remove reflections
-  - platform: jsn_sr04t # "ultrasonic" / "jsn_sr04t"
+  - platform: "jsn_sr04t" # [ultrasonic|jsn_sr04t] 
     id: distance
     name: "Distance"
-    #model: "aj_sr04m" # AJ-SR04M does only work with mode jsn_sr04t!
+    model: "jsn_sr04t" # [jsn_sr04t|aj_sr04m] AJ-SR04M does only work with mode jsn_sr04t!
     # error: [W][jsn_sr04t.sensor:054]: checksum failed: c6 != c5
     uart_id: uart_ultrasonic
     unit_of_measurement: "cm"
@@ -307,7 +283,7 @@ sensor:
         - sensor.template.publish:
             id: level_percent
             state: !lambda 'return round((id(level_liter).state / id(capacity)) * 100);'
-    update_interval: never
+    update_interval: 10s
                 
   # Fill level height in cm 
   - platform: template
@@ -336,11 +312,11 @@ sensor:
 # Deep sleep to reduce power usage
 deep_sleep:
   id: sleep_now  
+  wakeup_pin_mode: KEEP_AWAKE
   wakeup_pin:
     number: $pin_wakeup
+    allow_other_uses: true
     mode:
       input: true
       pullup: true
       pulldown: true
-    allow_other_uses: true
-  wakeup_pin_mode: KEEP_AWAKE
