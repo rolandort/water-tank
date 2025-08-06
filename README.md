@@ -145,6 +145,11 @@ The following pins are used in this project:
   pin_ultrasonic_rx:   GPIO20 # GPIO20 Rx/Trig
 ```
 
+## Enclosure
+
+![Enclosure of Water Tank Level](images/enclosure-of-esp32.jpg "Enclosure")  
+*Enclosure of the water tank level sensor setup*
+
 ## Project Structure
 
 ```
