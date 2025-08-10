@@ -34,8 +34,10 @@ uart:
     debug:
       direction: BOTH
       dummy_receiver: false
+      after:
+        delimiter: "\n"
       sequence:
-        - lambda: UARTDebug::log_hex(direction, bytes, ' ');
+        - lambda: UARTDebug::log_string(direction, bytes);
 
 logger:
 
@@ -49,7 +51,8 @@ sensor:
     model: "jsn_sr04t" # aj_sr04m|jsn_sr04t Try original model instead of aj_sr04m
     uart_id: uart_ultrasonic
     unit_of_measurement: "cm"
-    update_interval: 3s
+    accuracy_decimals: 1
+    update_interval: 1s
     filters: 
       - filter_out: nan
       - multiply: 100 # convert mm in cm
