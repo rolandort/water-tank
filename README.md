@@ -56,7 +56,9 @@ This system monitors:
 - Battery voltage
 - WiFi signal strength
 
-![Water Tank](images/water-tank.jpg "Water-Tank")  
+> **Note:** For detailed documentation with additional images and technical specifications, see the [detailed documentation](docs/README.md).
+
+![Water Tank](/docs/images/water-tank.png "Water-Tank")  
 *ESP32-C6 board with sensors and DataCake dashboard visualization*
 
 ## Requirements
@@ -104,10 +106,6 @@ This system monitors:
    ```
 ## Webinterface
 
-http://<device_ip>:80
-
-## Webinterface
-
 Access the web interface at:
 ```
 http://<device_ip>:80
@@ -131,7 +129,7 @@ deep_sleep:
 
 ## Wiring
 
-![Breadboard of Water Tank Level](images/breadboard-water-tank-level.png "Breadboard")  
+![Breadboard of Water Tank Level](/docs/images/breadboard-water-tank-level.png "Breadboard")  
 *Breadboard wiring of the water tank level sensor setup*
 
 ### Pin Configuration
@@ -147,8 +145,10 @@ The following pins are used in this project:
 
 ## Enclosure
 
-![Enclosure of Water Tank Level](images/enclosure-of-esp32.jpg "Enclosure")  
+![Enclosure of Water Tank Level](/docs/images/esp32-in-enclosure.png "Enclosure")  
 *Enclosure of the water tank level sensor setup*
+
+For additional enclosure and mounting details, see the [detailed documentation](docs/README.md#enclosure-and-installation).
 
 ## Project Structure
 
@@ -159,7 +159,9 @@ water-tank/
 │   ├── secrets.yaml           # Your actual credentials (gitignored)
 │   ├── esp32c6.yaml           # ESP32-C6 specific configuration
 │   └── base.yaml              # Base ESPHome configuration
-├── images/                    # Project images and diagrams
+├── docs/
+│   ├── images/               # Project images and diagrams
+│   └── README.md             # Detailed documentation with all images
 ├── water-tank.yaml            # Main ESPHome configuration
 ├── README.md                  # This documentation
 └── LICENSE                    # MIT License
@@ -169,7 +171,7 @@ water-tank/
 
 The dashboard was realized using [DataCake](https://datacake.co/) which displays the current and past water level, battery level and the temperature and humidity.
 
-![Dashboard](images/dashboard.png)  
+![Dashboard](/docs/images/datacake-dashboard.png)  
 *DataCake Dashboard showing water level, temperature, and battery status*
 
 ### Setting Up Your Own Dashboard
@@ -253,4 +255,4 @@ Please make sure to update tests and documentation as appropriate.
 
 This project is open source and available under the [MIT License](LICENSE).
 
-<img src="images/made-for-esphome-white-on-black.png" title="Made for ESPHome" alt="Made for ESPHome Logo" width=150>
+<img src="docs/images/made-for-esphome-white-on-black.png" title="Made for ESPHome" alt="Made for ESPHome Logo" width=150>
