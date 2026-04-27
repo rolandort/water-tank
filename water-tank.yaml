@@ -3,7 +3,7 @@
 # Hardware: Seeed XIAO ESP32-C6 8MB
 # Sensors: JSN-RS04t, DHT22 (AM2302)
 # Autor: Roland Ortner
-# Date: 2025-07-25
+# Date: 2026-04-27
 # Reports: battery voltage, WiFi signal, level and volume in water tank
 # Icons: https://pictogrammers.com/library/mdi/
 # ---------------------------------------------------------------------
@@ -19,15 +19,18 @@ substitutions:
   icon: mdi:water-well
 
   project_name:       "ortner.water_tank"
-  project_version:    "2025.08.06.001"
+  project_version:    "2026.04.27.001"
 
-  pin_battery_voltage: GPIO0  # GPIO0 D0
-  pin_wakeup:          GPIO1  # GPIO1 left/bottom (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
-  pin_dht:             GPIO2  # GPIO2 D2
-  pin_ultrasonic_tx:   GPIO18 # GPIO18 Tx/Echo
-  pin_ultrasonic_rx:   GPIO20 # GPIO20 Rx/Trig
+  pin_battery_voltage: GPIO0  # GPIO0  D0  - Voltage ADC
+  pin_wakeup:          GPIO1  # GPIO1  D1  - Wake up (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
+  pin_dht:             GPIO2  # GPIO2  D2  - DHT22 (AM2302) data pin
+  pin_post_enable:     GPIO21 # GPIO21 D3  - HIGH to post to Datacake, LOW to only log
+  pin_reset_button:    GPIO22 # GPIO22 D4  - Reset button (active LOW)
+  pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
+  pin_ultrasonic_rx:   GPIO20 # GPIO20 D9  - Ultrasonic Rx/Trig
   
   naptime: 60min  # Deep sleep duration in minutes e.g. 10s or 20min
+  interval: 1min   # Interval to read and post data every minute (only if wakeup pin true)
 
 # Global variables
 globals:
@@ -70,6 +73,23 @@ esphome:
                   id: sleep_now
                   sleep_duration: $naptime
 
+# Interval to read and post data every minute (only if wakeup pin true)
+interval:
+  - interval: $interval
+    then:
+      - logger.log: "Interval..." 
+      - script.execute: read_data
+      - script.wait: read_data # wait until read_data is finished
+      - script.execute: post_data
+      - if:
+          condition: 
+            binary_sensor.is_off: wakeup
+          then:
+            - logger.log: "Entering deep sleep for ${naptime}..."
+            - deep_sleep.enter:
+                id: sleep_now
+                sleep_duration: $naptime
+
 script:
   # Script to read all sensor values
   - id: read_data
@@ -89,30 +109,49 @@ script:
   - id: post_data
     then:
       - logger.log: "Post data to Datacake..."
-      - http_request.post:
-          request_headers:
-            Content-Length: 0
-          url: https://api.datacake.co/integrations/api/68f43bc6-d123-4717-80da-48ea7e11c01c/
-          json: |-
-            root["device"] = "a2245cc6-1fc6-4713-aa5b-c3c319d27195";
-            root["version"] = "${project_version}";
-            root["wifi_strength"] = id(wifi_strength).state;
-            root["battery_voltage"] = id(battery_voltage).state;
-            root["battery_level"] = id(battery_level).state;
-            root["distance"] = id(distance).state;
-            root["level_cm"] = id(level_cm).state;
-            root["level_liter"] = id(level_liter).state;
-            root["level_percent"] = id(level_percent).state;
-            root["temperature"] = id(temperature).state;
-            root["humidity"] = id(humidity).state;
-          on_response:
-            then:
-              - logger.log:
-                  format: 'Posted data to Datacake with status %d in %u ms'
-                  args:
-                    - response->status_code
-                    - response->duration_ms
-
+      - text_sensor.template.publish:
+          id: request_json
+          state: !lambda |-
+            char buffer[1024];
+            snprintf(buffer, sizeof(buffer),
+              R"({"device":"a2245cc6-1fc6-4713-aa5b-c3c319d27195","version":"%s","wifi_strength":%.0f,"battery_voltage":%.2f,"battery_level":%.0f,"distance":%.1f,"level_cm":%.1f,"level_liter":%.0f,"level_percent":%.0f,"temperature":%.1f,"humidity":%.1f})",
+              "${project_version}",
+              id(wifi_strength).state,
+              id(battery_voltage).state,
+              id(battery_level).state,
+              id(distance).state,
+              id(level_cm).state,
+              id(level_liter).state,
+              id(level_percent).state,
+              id(temperature).state,
+              id(humidity).state
+            );
+            return buffer;
+      - logger.log:
+          format: 'JSON payload: %s'
+          args: [id(request_json).state.c_str()]
+      - if:
+          condition:
+            binary_sensor.is_on: post_enable
+          then:
+            - logger.log: "Posting to Datacake..."
+            - http_request.post:
+                request_headers:
+                  Content-Type: application/json
+                url: https://api.datacake.co/integrations/api/68f43bc6-d123-4717-80da-48ea7e11c01c/
+                body: !lambda 'return id(request_json).state;'
+                on_response:
+                  then:
+                    - logger.log:
+                        format: 'Posted data to Datacake with status %d in %u ms'
+                        args:
+                          - response->status_code
+                          - response->duration_ms
+                on_error:
+                  then:
+                    - logger.log: "Request failed!"
+          else:
+            - logger.log: "Post disabled - data only logged"
 # UART mode (do not set stop_bits, rx_buffer_size for jsn_sr04t) (https://esphome.io/components/uart.html)
 uart:
   - id: uart_ultrasonic
@@ -129,6 +168,7 @@ http_request:
 button:
   # Restart button on the web UI
   - platform: restart
+    id: restart_btn
     name: "Restart"
     entity_category: "diagnostic"
     web_server: 
@@ -151,6 +191,32 @@ binary_sensor:
       - deep_sleep.enter:
           id: sleep_now
           sleep_duration: $naptime
+
+  # Post enable pin (HIGH = post to Datacake, LOW = only log)
+  - platform: gpio
+    id: post_enable
+    name: "Post Enable"
+    icon: mdi:cloud-upload
+    entity_category: "config"
+    pin: 
+      number: $pin_post_enable
+      mode:
+        pulldown: true
+        input: true
+
+  # Reset button (active LOW - press to reboot)
+  - platform: gpio
+    id: reset_button
+    name: "Reset Button"
+    icon: mdi:restart
+    entity_category: "diagnostic"
+    pin: 
+      number: $pin_reset_button
+      mode:
+        input: true
+    on_press:
+      - logger.log: "Reset button pressed - rebooting..."
+      - button.press: restart_btn
 
 text_sensor:
   # Project version string
@@ -175,6 +241,13 @@ text_sensor:
       days: "d"
       hours: "h"
       minutes: "m"
+    update_interval: never
+
+  # JSON payload for logging (internal only)
+  - platform: template
+    id: request_json
+    name: "Request JSON"
+    internal: true
     update_interval: never
 
 sensor:
@@ -240,6 +313,7 @@ sensor:
     name: "Internal Temperature"
     icon: mdi:thermometer
     unit_of_measurement: '°C'
+    update_interval: never 
 
   # Temperature and Humidity DHT22 (AM2302) (https://esphome.io/components/sensor/dht)
   - platform: dht
@@ -258,6 +332,8 @@ sensor:
       icon: "mdi:cloud-percent-outline"
       unit_of_measurement: "%"
       accuracy_decimals: 1
+    update_interval: never 
+
   
   # Ultrasonic sensor AJ-SR04M distance (https://markus-haack.com/watertank-esphome/)
   # mounted in 50 mm pipe with feld to remove reflections
@@ -283,7 +359,7 @@ sensor:
         - sensor.template.publish:
             id: level_percent
             state: !lambda 'return round((id(level_liter).state / id(capacity)) * 100);'
-    update_interval: 10s
+    update_interval: never
                 
   # Fill level height in cm 
   - platform: template

@@ -86,6 +86,14 @@ This system monitors:
    ```bash
    pip install esphome
    ```
+   or update esphome to latest version:
+   ```bash
+   pip install --upgrade esphome
+   ```
+   Validate the version of esphome:
+   ```bash
+   esphome version
+   ```
 4. Validate the configuration:
    ```bash  
    esphome config water-tank.yaml
@@ -136,11 +144,13 @@ deep_sleep:
 
 The following pins are used in this project:
 ```yaml
-  pin_battery_voltage: GPIO0  # GPIO0 D0
-  pin_wakeup:          GPIO1  # GPIO1 left/bottom (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
-  pin_dht:             GPIO2  # GPIO2 D2
-  pin_ultrasonic_tx:   GPIO18 # GPIO18 Tx/Echo
-  pin_ultrasonic_rx:   GPIO20 # GPIO20 Rx/Trig
+pin_battery_voltage: GPIO0  # GPIO0  D0  - Voltage ADC
+pin_wakeup:          GPIO1  # GPIO1  D1  - Wakeup (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
+pin_dht:             GPIO2  # GPIO2  D2  - DHT22 (AM2302) data pin
+pin_post_enable:     GPIO21 # GPIO21 D3  - HIGH to post to Datacake, LOW to only log
+pin_reset_button:    GPIO22 # GPIO22 D4  - Reset button (active LOW)
+pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
+pin_ultrasonic_rx:   GPIO20 # GPIO20 D9  - Ultrasonic Rx/Trig
 ```
 
 ## Enclosure
@@ -209,6 +219,16 @@ To enable debug logging:
 # In water-tank.yaml
 logger:
   level: DEBUG
+```
+
+## VScode Settings
+
+To avoid IDE erros about special properties like !secret, press Ctrl + Shift + P and search for `settings.json` of your workspare and add the following:
+```json
+  "yaml.customTags": [
+    "!secret",
+    "!include_dir_merge_named"
+  ],
 ```
 
 ## Power Considerations

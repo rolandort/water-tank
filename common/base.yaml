@@ -19,10 +19,10 @@ wifi:
   #fast_connect: true
   power_save_mode: LIGHT
   manual_ip:
-    static_ip: 192.168.178.99
-    gateway: 192.168.178.1
+    static_ip: 192.168.10.99
+    gateway: 192.168.10.1
     subnet: 255.255.255.0
-    dns1: 192.168.178.1
+    dns1: 192.168.10.1
     dns2: 8.8.8.8
   #enable_btm: true
   #enable_rrm: true
@@ -36,7 +36,7 @@ captive_portal:
 
 # Enable logging (https://esphome.io/components/logger)
 logger:
-  level: VERBOSE
+  level: DEBUG # VERBOSE, DEBUG, INFO, WARN, ERROR
   hardware_uart: USB_SERIAL_JTAG # Enable logging via USB-C (https://esphome.io/components/logger.html?highlight=usb%2Bcdc#hardware-uarts)
   # baud_rate: 0 # Turn off serial logging (TBD)
 
@@ -49,7 +49,8 @@ ota:
 
 # Enable Home Assistant API (https://esphome.io/components/api, conflicts with mqtt:)
 api:
-  password: !secret api_password
+  encryption:
+    key: !secret api_encryption_key
 
 # Get time from Home Assistant
 #time:
