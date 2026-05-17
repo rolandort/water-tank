@@ -19,7 +19,7 @@ substitutions:
   icon: mdi:water-well
 
   project_name:       "ortner.water_tank"
-  project_version:    "2026.05.17.001"
+  project_version:    "2026.05.17.002"
 
   pin_battery_voltage: GPIO0  # GPIO0  D0  - Voltage ADC
   pin_wakeup:          GPIO1  # GPIO1  D1  - Wake up (active LOW, only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
@@ -29,7 +29,7 @@ substitutions:
   pin_ultrasonic_rx:   GPIO20 # GPIO20 D9  - Ultrasonic Rx/Trig
   pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
   
-  naptime: 2min  # Deep sleep duration in minutes e.g. 60min, 120min
+  naptime: 120min  # Deep sleep duration in minutes e.g. 60min, 120min
   poll_delay: 60s  # Delay between polling loop iterations in interval mode e.g. 60s
 
 # Global variables
@@ -219,6 +219,7 @@ binary_sensor:
               - logger.log: "Switch 'Post Data' changed: DISABLED"
 
   # Reset button (active LOW - press to reboot)
+  # Note: reset does not reboot in deep sleep mode!
   - platform: gpio
     id: reset_button
     name: "Restart"
