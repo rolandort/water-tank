@@ -55,6 +55,7 @@ pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
 pin_ultrasonic_rx:   GPIO20 # GPIO20 D9  - Ultrasonic Rx/Trig
 ```
 
+- `GPIO0` is used as the ADC input for battery voltage measurement. The battery is monitored through a voltage divider made from two 220 kΩ resistors, which halves the LiPo voltage so it stays within the ESP32-C6 ADC input range.
 - `GPIO21` is used as a post-enable switch: when HIGH the device sends data to Datacake, when LOW it only logs the JSON payload for debugging.
 - `GPIO22` is configured as an active-low reset button that triggers a device restart.
 

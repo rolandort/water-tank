@@ -145,12 +145,12 @@ deep_sleep:
 The following pins are used in this project:
 ```yaml
 pin_battery_voltage: GPIO0  # GPIO0  D0  - Voltage ADC
-pin_wakeup:          GPIO1  # GPIO1  D1  - Wakeup (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
+pin_wakeup:          GPIO1  # GPIO1  D1  - Wake up (active LOW, only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
 pin_dht:             GPIO2  # GPIO2  D2  - DHT22 (AM2302) data pin
-pin_post_enable:     GPIO21 # GPIO21 D3  - HIGH to post to Datacake, LOW to only log
+pin_post_enable:     GPIO21 # GPIO21 D3  - Low to post to Datacake, HIGH to only log (active LOW)
 pin_reset_button:    GPIO22 # GPIO22 D4  - Reset button (active LOW)
-pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
 pin_ultrasonic_rx:   GPIO20 # GPIO20 D9  - Ultrasonic Rx/Trig
+pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
 ```
 
 ## Enclosure

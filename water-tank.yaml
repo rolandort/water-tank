@@ -3,7 +3,7 @@
 # Hardware: Seeed XIAO ESP32-C6 8MB
 # Sensors: JSN-RS04t, DHT22 (AM2302)
 # Autor: Roland Ortner
-# Date: 2026-04-27
+# Date: 2026-05-17
 # Reports: battery voltage, WiFi signal, level and volume in water tank
 # Icons: https://pictogrammers.com/library/mdi/
 # ---------------------------------------------------------------------
@@ -19,18 +19,18 @@ substitutions:
   icon: mdi:water-well
 
   project_name:       "ortner.water_tank"
-  project_version:    "2026.04.27.001"
+  project_version:    "2026.05.17.001"
 
   pin_battery_voltage: GPIO0  # GPIO0  D0  - Voltage ADC
-  pin_wakeup:          GPIO1  # GPIO1  D1  - Wake up (only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
+  pin_wakeup:          GPIO1  # GPIO1  D1  - Wake up (active LOW, only pins 0, 1, 2, 3, 4, 5, 6, 7 may support wakeup)
   pin_dht:             GPIO2  # GPIO2  D2  - DHT22 (AM2302) data pin
-  pin_post_enable:     GPIO21 # GPIO21 D3  - HIGH to post to Datacake, LOW to only log
+  pin_post_enable:     GPIO21 # GPIO21 D3  - Low to post to Datacake, HIGH to only log (active LOW)
   pin_reset_button:    GPIO22 # GPIO22 D4  - Reset button (active LOW)
-  pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
   pin_ultrasonic_rx:   GPIO20 # GPIO20 D9  - Ultrasonic Rx/Trig
+  pin_ultrasonic_tx:   GPIO18 # GPIO18 D10 - Ultrasonic Tx/Echo
   
-  naptime: 60min  # Deep sleep duration in minutes e.g. 10s or 20min
-  interval: 1min   # Interval to read and post data every minute (only if wakeup pin true)
+  naptime: 2min  # Deep sleep duration in minutes e.g. 60min, 120min
+  poll_delay: 60s  # Delay between polling loop iterations in interval mode e.g. 60s
 
 # Global variables
 globals:
@@ -61,40 +61,13 @@ esphome:
   on_boot:
     - priority: -300 # make sure WiFi is connected first
       then:
-        - script.execute: read_data
-        - script.wait: read_data # wait until read_data is finished
-        - script.execute: post_data
-        - if:
-            condition: 
-              binary_sensor.is_off: wakeup
-            then:
-              - logger.log: "Entering deep sleep for ${naptime}..."
-              - deep_sleep.enter:
-                  id: sleep_now
-                  sleep_duration: $naptime
-
-# Interval to read and post data every minute (only if wakeup pin true)
-interval:
-  - interval: $interval
-    then:
-      - logger.log: "Interval..." 
-      - script.execute: read_data
-      - script.wait: read_data # wait until read_data is finished
-      - script.execute: post_data
-      - if:
-          condition: 
-            binary_sensor.is_off: wakeup
-          then:
-            - logger.log: "Entering deep sleep for ${naptime}..."
-            - deep_sleep.enter:
-                id: sleep_now
-                sleep_duration: $naptime
+        - logger.log: "Booting ${devicename} with version ${project_version}..."
+        - script.execute: polling_loop
 
 script:
   # Script to read all sensor values
   - id: read_data
     then:
-      - logger.log: "Reading sensor data..." 
       - component.update: version
       - component.update: uptime_seconds
       - component.update: uptime_str
@@ -102,13 +75,11 @@ script:
       - component.update: battery_voltage
       - component.update: environment
       - component.update: distance
-      - delay: 5s # wait for ultrasonic sensor
-      - logger.log: "Reading sensors data done." 
+      - delay: 5s # wait for ultrasonic sensor data
 
   # Script to post all data to Datacake
   - id: post_data
     then:
-      - logger.log: "Post data to Datacake..."
       - text_sensor.template.publish:
           id: request_json
           state: !lambda |-
@@ -127,14 +98,13 @@ script:
               id(humidity).state
             );
             return buffer;
-      - logger.log:
-          format: 'JSON payload: %s'
-          args: [id(request_json).state.c_str()]
       - if:
           condition:
             binary_sensor.is_on: post_enable
           then:
-            - logger.log: "Posting to Datacake..."
+            - logger.log:
+                format: "Posting data to Datacake: %s"
+                args: [id(request_json).state.c_str()]
             - http_request.post:
                 request_headers:
                   Content-Type: application/json
@@ -151,7 +121,35 @@ script:
                   then:
                     - logger.log: "Request failed!"
           else:
-            - logger.log: "Post disabled - data only logged"
+            - logger.log:
+                format: "Posting data disabled, logged: %s"
+                args: [id(request_json).state.c_str()]
+
+  # Polling loop for interval mode and deep sleep decision
+  - id: polling_loop
+    mode: restart
+    then:
+      - if:
+          condition:
+            binary_sensor.is_off: wakeup
+          then:
+            - logger.log: "Polling loop with: interval mode"
+            - script.execute: read_data
+            - script.wait: read_data
+            - script.execute: post_data
+            - logger.log: "Delaying for ${poll_delay}..."
+            - delay: $poll_delay
+            - script.execute: polling_loop
+          else:
+            - logger.log: "Polling loop with: deep sleep mode"
+            - script.execute: read_data
+            - script.wait: read_data
+            - script.execute: post_data
+            - logger.log: "Entering deep sleep for ${naptime}..."
+            - deep_sleep.enter:
+                id: sleep_now
+                sleep_duration: $naptime
+
 # UART mode (do not set stop_bits, rx_buffer_size for jsn_sr04t) (https://esphome.io/components/uart.html)
 uart:
   - id: uart_ultrasonic
@@ -170,52 +168,70 @@ button:
   - platform: restart
     id: restart_btn
     name: "Restart"
-    entity_category: "diagnostic"
+    entity_category: "config"
     web_server: 
       sorting_weight: 11
 
 binary_sensor:
-  # Wake up pin
+  # Deep sleep enable switch (use this pin to allow/disallow going to sleep)
   - platform: gpio
     id: wakeup
+    name: "Deep Sleep"
+    icon: mdi:sleep
+    entity_category: "config"
     pin: 
       number: $pin_wakeup
       allow_other_uses: true
       mode:
         pullup: true
-        pulldown: true
         input: true
-    on_release:
-      - logger.log: "Entering deep sleep for ${naptime} ..."
-      - delay: 10s # small time window to push OTA updates
-      - deep_sleep.enter:
-          id: sleep_now
-          sleep_duration: $naptime
+      inverted: true
+    on_state:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: wakeup
+            then:
+              - logger.log: "Switch changed: deep sleep enabled"
+            else:
+              - logger.log: "Switch changed: interval mode enabled"
 
-  # Post enable pin (HIGH = post to Datacake, LOW = only log)
+  # Post enable pin (LOW = post to Datacake, HIGH = only log)
   - platform: gpio
     id: post_enable
-    name: "Post Enable"
+    name: "Post Data"
     icon: mdi:cloud-upload
     entity_category: "config"
     pin: 
       number: $pin_post_enable
       mode:
-        pulldown: true
+        pullup: true
         input: true
+      inverted: true
+    on_state:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: post_enable
+            then:
+              - logger.log: "Switch 'Post Data' changed: ENABLED"
+            else:
+              - logger.log: "Switch 'Post Data' changed: DISABLED"
 
   # Reset button (active LOW - press to reboot)
   - platform: gpio
     id: reset_button
-    name: "Reset Button"
+    name: "Restart"
     icon: mdi:restart
-    entity_category: "diagnostic"
+    entity_category: "config"
     pin: 
       number: $pin_reset_button
       mode:
+        pullup: true
         input: true
+      inverted: true
     on_press:
-      - logger.log: "Reset button pressed - rebooting..."
+      - logger.log: "Button 'Restart' pressed: Rebooting..."
       - button.press: restart_btn
 
 text_sensor:
@@ -285,9 +301,10 @@ sensor:
       sorting_weight: 15
     pin: $pin_battery_voltage # GPIO0 D0 A0 with voltage devider using 220k resistors to GND & VCC
     accuracy_decimals: 2
+    attenuation: auto # required for full range of 0-3.3V
     filters:
       - multiply: 2.000
-      - offset: 0.10 # fix false measurements of Voltage for max of 4.2
+      - offset: 0.20 # fix false measurements of Voltage for max of 4.2
     on_value:
       then:
         - sensor.template.publish:
@@ -387,12 +404,11 @@ sensor:
   
 # Deep sleep to reduce power usage
 deep_sleep:
-  id: sleep_now  
+  id: sleep_now
   wakeup_pin_mode: KEEP_AWAKE
   wakeup_pin:
     number: $pin_wakeup
     allow_other_uses: true
     mode:
-      input: true
       pullup: true
-      pulldown: true
+      input: true
